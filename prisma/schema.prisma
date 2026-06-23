@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EmailCategory {
+  PROCESO_SELECCION
+  PRUEBA_TECNICA
+  ENTREVISTA_AGENDADA
+  SPAM_PUBLICITARIO
+  OTROS
+}
+
+enum PriorityLevel {
+  ALTA
+  MEDIA
+  BAJA
+}
+
+model EmailLog {
+  id_emailLog String @id @default(uuid())
+  messageId String @unique
+  fromEmail String
+  receivedAt DateTime 
+  aiSummary String @db.Text 
+  category EmailCategory
+  priority PriorityLevel
+  deadline DateTime?
+  alerts DiscordAlert[]
+}
+
+model DiscordAlert {
+  id_discord Int @id @default(autoincrement())
+  discordMessageId String @unique
+  emailLogId String 
+  emailLog EmailLog @relation(fields: [emailLogId], references: [id_emailLog])
+  sentAt DateTime @default(now())
+}
+
+model BlackList {
+  id String @id @default(uuid())
+  emailOrDomain String @unique
+  createdAt DateTime @default(now())
+}

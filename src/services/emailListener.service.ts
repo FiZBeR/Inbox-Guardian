@@ -1,4 +1,9 @@
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
+import { inboxClassification } from "./ai.service.js";
+import prismaConfig from "../../prisma.config.js";
+import prisma from "../config/prisma.client.js";
+import { DiscordService } from "./discord.service.js";
 
 export class EmailListenerServices {
 
@@ -12,7 +17,7 @@ export class EmailListenerServices {
         }
 
         console.log("Credenciales: " + process.env.EMAIL_USER + " " + process.env.EMAIL_APP_PASSWORD);
-        
+
         this.client = new ImapFlow({
             host: 'imap.gmail.com',
             port: 993,
@@ -72,25 +77,56 @@ export class EmailListenerServices {
             console.log(`🔍 Encontrados ${searchResults.length} correos sin leer. Analizando estructuras...`);
 
             for (const uid of searchResults) {
-                const emailData = await this.client.fetchOne(uid.toString(), {
-                    envelope: true,
-                    source: false,
-                    bodyStructure: true
-                });
 
-                // CORRECCIÓN 2: Validamos que exista tanto el objeto como su cabecera 'envelope'
-                if (!emailData || !emailData.envelope) {
-                    console.log(`⚠️ No se pudo obtener el envelope para el correo con UID: ${uid}`);
-                    continue;
+                try {
+                    const emailData = await this.client.fetchOne(uid.toString(), {
+                        envelope: true,
+                        source: true,
+                        bodyStructure: true
+                    });
+
+                    // CORRECCIÓN 2: Validamos que exista tanto el objeto como su cabecera 'envelope'
+                    if (!emailData || !emailData.envelope || !emailData.source) {
+                        console.log(`⚠️ No se pudo obtener el envelope para el correo con UID: ${uid}`);
+                        continue;
+                    }
+
+
+                    // Si viene undefined, el operador OR (||) le asigna un ID artificial basado en su posición
+                    const messageId = emailData.envelope.messageId || `inbox-guardian-uid-${uid}`;
+                    console.log(`📬 Evaluando correo con Message-ID: ${messageId}`);
+
+                    const existe = await prisma.emailLog.findUnique({ where: { messageId } });
+                    if (existe) continue;
+
+                    const emailParse = await simpleParser(emailData.source!);
+                    const emailtext = emailParse.text || emailParse.textAsHtml || '';
+
+
+                    if (!emailtext.trim()) {
+                        console.log(`🈳 El correo ${messageId} no tiene texto analizable. Saltando IA...`);
+                        continue;
+                    }
+
+                    const response = await inboxClassification(emailtext);
+                    console.log(`✅ Clasificación terminada: Es un(a) ${response.category} con prioridad ${response.priority}`);
+
+                    await prisma.emailLog.create({
+                        data: {
+                            messageId: messageId,
+                            category: response.category,
+                            priority: response.priority,
+                            summary: response.summary,
+                            actionRequired: response.actionRequired,
+                            deadline: response.deadline
+                        }
+                    });
+
+                    await DiscordService.sendAlert(messageId, response)
+
+                } catch (error) {
+                    console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
                 }
-
-                const messageId = emailData.envelope.messageId;
-                console.log(`📬 Evaluando correo con Message-ID: ${messageId}`);
-
-                // TODO: Aquí conectaremos con Prisma para verificar que no esté repetido
-                // prisma.emailLog.findUnique({ where: { messageId } })
-
-                // TODO: Aquí llamaremos a Gemini si pasa los filtros de base de datos
             }
 
         } catch (error) {

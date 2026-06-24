@@ -83,6 +83,7 @@ export class EmailListenerServices {
 
       for (const uid of searchResults) {
         try {
+
           const emailData = await this.client.fetchOne(uid.toString(), {
             envelope: true,
             source: true,
@@ -98,8 +99,7 @@ export class EmailListenerServices {
           }
 
           // Si viene undefined, el operador OR (||) le asigna un ID artificial basado en su posición
-          const messageId =
-            emailData.envelope.messageId || `inbox-guardian-uid-${uid}`;
+          const messageId = emailData.envelope.messageId || `inbox-guardian-uid-${uid}`;
           console.log(`📬 Evaluando correo con Message-ID: ${messageId}`);
 
           const existe = await prisma.emailLog.findUnique({
@@ -110,20 +110,19 @@ export class EmailListenerServices {
           const emailParse = await simpleParser(emailData.source!);
           const emailtext = emailParse.text || emailParse.textAsHtml || "";
 
-          const remitente =
-            emailParse.from?.value[0]?.address || "desconocido@email.com";
+          const remitente = emailParse.from?.value[0]?.address || "desconocido@email.com";
 
           if (!emailtext.trim()) {
-            console.log(
-              `🈳 El correo ${messageId} no tiene texto analizable. Saltando IA...`
-            );
+            console.log(`🈳 El correo ${messageId} no tiene texto analizable. Saltando IA...`);
             continue;
           }
 
           const response = await inboxClassification(emailtext);
-          console.log(
-            `✅ Clasificación terminada: Es un(a) ${response.category} con prioridad ${response.priority}`
-          );
+          console.log(`✅ Clasificación terminada: Es un(a) ${response.category} con prioridad ${response.priority}`);
+
+          if(response.category == 'OTROS' || response.category == 'SPAM_PUBLICIDAD'){
+            continue
+          }
 
           await prisma.emailLog.create({
             data: {
@@ -133,15 +132,13 @@ export class EmailListenerServices {
                 aiSummary: response.summary,
                 actionRequired: response.actionRequired,
                 deadline: response.deadline,
-                fromEmail: response.deadline // <-- ¡La pieza faltante!
+                fromEmail: remitente // <-- ¡La pieza faltante!
             },
           });
 
           await DiscordService.sendAlert(messageId, response);
 
-          console.log(
-            `🚀 Flujo completo terminado para el correo: ${messageId}`
-          );
+          console.log( `🚀 Flujo completo terminado para el correo: ${messageId}`);
         } catch (error) {
           console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
         }

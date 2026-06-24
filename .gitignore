@@ -1,4 +1,23 @@
-node_modules
-# Keep environment variables out of version control
+# Dependencias
+node_modules/
+
+# Archivos de entorno / Secretos
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Directorios de compilación / distribución
 dist/
+build/
+
+# Logs de gestores de paquetes
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db

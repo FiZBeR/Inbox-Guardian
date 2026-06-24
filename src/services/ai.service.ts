@@ -17,7 +17,7 @@ export const inboxClassification = async (correo: string): Promise<IAAnalysisRes
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             contents: correo,
             config: {
                 systemInstruction: capitalPrompt,

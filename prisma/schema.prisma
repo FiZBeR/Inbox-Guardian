@@ -9,6 +9,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+   url     = env("DATABASE_URL")
 }
 
 enum EmailCategory {
@@ -29,8 +30,9 @@ model EmailLog {
   id_emailLog String @id @default(uuid())
   messageId String @unique
   fromEmail String
-  receivedAt DateTime 
-  aiSummary String @db.Text 
+  receivedAt DateTime @default(now())
+  aiSummary String @db.Text
+  actionRequired String @default("Acción no especificada") 
   category EmailCategory
   priority PriorityLevel
   deadline DateTime?

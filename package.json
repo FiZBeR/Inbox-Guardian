@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx --env-file=.env watch src/app.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:watch": "tsx --env-file=.env --watch src/app.ts"
+    "dev:watch": "tsx --env-file=.env --watch src/app.ts",
+    "build": "npx prisma generate && tsc",
+    "start": "node dist/app.js"
   },
   "keywords": [],
   "author": "",

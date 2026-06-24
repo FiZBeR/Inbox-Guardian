@@ -1,7 +1,6 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { inboxClassification } from "./ai.service.js";
-import prismaConfig from "../../prisma.config.js";
 import prisma from "../config/prisma.client.js";
 import { DiscordService } from "./discord.service.js";
 

@@ -5,7 +5,7 @@ export type PriorityLevel = 'ALTA' | 'MEDIA' | 'BAJA';
 export interface IAAnalysisResult {
     category: EmailCategory;
     priority: PriorityLevel;
-    summary: String;
-    actionRequired: String
-    deadline: String | null;
+    summary: string;
+    actionRequired: string
+    deadline: string | null;
 }

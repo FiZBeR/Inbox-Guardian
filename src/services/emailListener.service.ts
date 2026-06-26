@@ -10,6 +10,32 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export class EmailListenerServices {
   private static client: ImapFlow | null = null;
 
+  // ── NUEVO: wrapper con backoff exponencial para errores 429 ──────────────
+  private static async classifyWithRetry(text: string, maxRetries = 4) {
+    let backoff = 30_000; // 30s inicial
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await inboxClassification(text);
+      } catch (error: any) {
+        const is429 =
+          error?.message?.includes("429") ||
+          error?.message?.includes("RESOURCE_EXHAUSTED");
+
+        if (is429 && attempt < maxRetries - 1) {
+          console.log(
+            `⏳ Rate limit alcanzado (intento ${attempt + 1}). Esperando ${backoff / 1000}s...`
+          );
+          await sleep(backoff);
+          backoff = Math.min(backoff * 2, 300_000); // tope de 5 min
+        } else {
+          throw error; // si no es 429 o se agotaron los intentos, lanza normal
+        }
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   public static async start(): Promise<void> {
     if (this.client) {
       console.log("El servicio de escucha ya se encuentra corriendo");
@@ -20,7 +46,7 @@ export class EmailListenerServices {
       host: "imap.gmail.com",
       port: 993,
       secure: true,
-      logger: false, // Puedes cambiarlo a true si necesitas debuguear a bajo nivel en la consola
+      logger: false,
       auth: {
         user: process.env.EMAIL_USER!,
         pass: process.env.EMAIL_APP_PASSWORD!,
@@ -57,17 +83,10 @@ export class EmailListenerServices {
     }
   }
 
-  /**
-   * Método encargado de buscar correos no leídos y procesarlos uno por uno
-   */
-  /**
-   * Método encargado de buscar correos no leídos y procesarlos uno por uno
-   */
   private static async processNewEmails(): Promise<void> {
     if (!this.client) return;
 
     try {
-      // CORRECCIÓN 1: En ImapFlow se usa 'seen: false' en lugar de 'unseen: true'
       const searchResults = await this.client.search({ seen: false });
 
       if (!searchResults || searchResults.length === 0) {
@@ -83,14 +102,12 @@ export class EmailListenerServices {
 
       for (const uid of searchResults) {
         try {
-
           const emailData = await this.client.fetchOne(uid.toString(), {
             envelope: true,
             source: true,
             bodyStructure: true,
           });
 
-          // CORRECCIÓN 2: Validamos que exista tanto el objeto como su cabecera 'envelope'
           if (!emailData || !emailData.envelope || !emailData.source) {
             console.log(
               `⚠️ No se pudo obtener el envelope para el correo con UID: ${uid}`
@@ -98,7 +115,6 @@ export class EmailListenerServices {
             continue;
           }
 
-          // Si viene undefined, el operador OR (||) le asigna un ID artificial basado en su posición
           const messageId = emailData.envelope.messageId || `inbox-guardian-uid-${uid}`;
           console.log(`📬 Evaluando correo con Message-ID: ${messageId}`);
 
@@ -117,7 +133,12 @@ export class EmailListenerServices {
             continue;
           }
 
-          const response = await inboxClassification(emailtext);
+          // ── CAMBIO: usar classifyWithRetry en lugar de inboxClassification directamente ──
+          const response = await this.classifyWithRetry(emailtext);
+
+          if(!response){
+            throw new Error("No hubo respuesta del servidor AI!")
+          }
           console.log(`✅ Clasificación terminada: Es un(a) ${response.category} con prioridad ${response.priority}`);
 
           if(response.category == 'OTROS' || response.category == 'SPAM_PUBLICIDAD'){
@@ -132,13 +153,13 @@ export class EmailListenerServices {
                 aiSummary: response.summary,
                 actionRequired: response.actionRequired,
                 deadline: response.deadline,
-                fromEmail: remitente // <-- ¡La pieza faltante!
+                fromEmail: remitente
             },
           });
 
           await DiscordService.sendAlert(messageId, response);
 
-          console.log( `🚀 Flujo completo terminado para el correo: ${messageId}`);
+          console.log(`🚀 Flujo completo terminado para el correo: ${messageId}`);
         } catch (error) {
           console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
         }
@@ -149,16 +170,12 @@ export class EmailListenerServices {
     }
   }
 
-  /**
-   * Lógica para manejar re-conexiones automáticas con un delay seguro
-   */
   private static handleReconnection(): void {
-    // Limpiamos el cliente viejo
     this.client = null;
     console.log("🔄 Programando intento de reconexión en 10 segundos...");
 
     setTimeout(async () => {
       await this.start();
-    }, 10000); // Espera 10 segundos antes de volver a martillar el servidor de Microsoft
+    }, 10000);
   }
 }

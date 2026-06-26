@@ -4,11 +4,37 @@ import { inboxClassification } from "./ai.service.js";
 import prisma from "../config/prisma.client.js";
 import { DiscordService } from "./discord.service.js";
 
-// Utilidad global para pausar asíncronamente
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class EmailListenerServices {
   private static client: ImapFlow | null = null;
+
+  // ── NUEVO: backoff exponencial ante errores 429 / sobrecarga ─────────────
+  private static async classifyWithRetry(text: string, maxRetries = 4) {
+    let backoff = 30_000; // 30s inicial
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await inboxClassification(text);
+      } catch (error: any) {
+        const msg = error?.message || String(error);
+        const isRateLimit =
+          msg.includes("429") ||
+          msg.includes("503") ||
+          msg.includes("exhausted") ||
+          msg.includes("Overloaded");
+
+        if (isRateLimit && attempt < maxRetries - 1) {
+          console.warn(`⚠️ IA saturada (intento ${attempt + 1}/${maxRetries}). Pausando ${backoff / 1000}s...`);
+          await sleep(backoff);
+          backoff = Math.min(backoff * 2, 300_000); // tope 5 min
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   public static async start(): Promise<void> {
     if (this.client) {
@@ -96,42 +122,15 @@ export class EmailListenerServices {
             continue;
           }
 
-          // ====================================================================
-          // ⚡ BURBUJA DE PROTECCIÓN IA: Retry con Límite
-          // ====================================================================
-          let intentos = 0;
-          const maxIntentos = 3;
-          let iaResponseReady = false;
-          let response: any = null;
-
-          while (intentos < maxIntentos && !iaResponseReady) {
-            try {
-              response = await inboxClassification(emailtext);
-              iaResponseReady = true; 
-            } catch (error: any) {
-              intentos++;
-              const errorMessage = error.message || String(error);
-
-              // Buscamos códigos clásicos de saturación de Gemini/Google
-              if (errorMessage.includes('503') || errorMessage.includes('429') || errorMessage.includes('exhausted') || errorMessage.includes('Overloaded')) {
-                console.warn(`⚠️ IA saturada o límite alcanzado (Intento ${intentos}/${maxIntentos}). Pausando 60 segundos...`);
-                
-                if (intentos < maxIntentos) {
-                  await sleep(60000); // Pausa de 1 minuto usando la función global
-                }
-              } else {
-                console.error('❌ Error crítico de la IA no relacionado con demanda:', errorMessage);
-                break; // Rompe el while si el error es de sintaxis o de formato JSON
-              }
-            }
-          }
-
-          // Cláusula de guarda: Si la IA falló los 3 intentos, pasamos al siguiente correo
-          if (!iaResponseReady || !response) {
+          // ── CAMBIO: reemplaza el bloque while por classifyWithRetry ─────────
+          let response: any;
+          try {
+            response = await this.classifyWithRetry(emailtext);
+          } catch {
             console.error(`❌ Se agotaron los intentos para el correo ${messageId}. Quedará pendiente para el próximo escaneo.`);
-            continue; 
+            continue;
           }
-          // ====================================================================
+          // ────────────────────────────────────────────────────────────────────
 
           console.log(`✅ Clasificación terminada: Es un(a) ${response.category} con prioridad ${response.priority}`);
 
@@ -158,7 +157,6 @@ export class EmailListenerServices {
           console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
         }
         
-        // Pausa original entre correos normales para no saturar procesos
         await sleep(12000);
       }
     } catch (error) {

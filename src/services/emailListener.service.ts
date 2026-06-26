@@ -157,7 +157,7 @@ export class EmailListenerServices {
           console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
         }
         
-        await sleep(12000);
+        await sleep(15000);
       }
     } catch (error) {
       console.error("❌ Falló el procesamiento de los correos nuevos:", error);

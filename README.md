@@ -12,11 +12,7 @@ Como desarrollador en búsqueda activa, mi bandeja de entrada se convirtió en m
 - **Arquitectura Basada en Eventos:** Diseñado para operar 24/7 sin intervención manual, garantizando que nunca más perderé una fecha de entrega o un proceso de selección.
 
 <p align="center">
-  <img src="assets/banner-verde.png" width="400" alt="Alerta de proceso">
-</p>
-
-<p align="center">
-  <img src="assets/banner-amarillo.png" width="400" alt="Alerta de proceso">
+  <img src="assets/banner-amarillo.JPG" width="400" alt="Alerta de proceso">
 </p>
 
 <p align="center">

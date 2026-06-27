@@ -122,6 +122,8 @@ export class EmailListenerServices {
             continue;
           }
 
+          await sleep(15000);
+
           // ── CAMBIO: reemplaza el bloque while por classifyWithRetry ─────────
           let response: any;
           try {
@@ -157,7 +159,7 @@ export class EmailListenerServices {
           console.error(`❌ Falló el procesamiento del correo: ${uid}`, error);
         }
         
-        await sleep(15000);
+        
       }
     } catch (error) {
       console.error("❌ Falló el procesamiento de los correos nuevos:", error);
